@@ -63,8 +63,8 @@ module platform::subscription {
         let user_account = UserAccount {
             id: object::new(ctx),
             create_date: clock::timestamp_ms(clock),
-            last_subscription_date: 0,
-            subscription_valid_until: 0,
+            last_subscription_date: clock::timestamp_ms(clock), // Set last subscription date to current timestamp
+            subscription_valid_until: clock::timestamp_ms(clock) + 30 * 24 * 60 * 60 * 1000, // Set subscription validity for 30 days
             subscription_fee,
             user_address: tx_context::sender(ctx),
             subscription_transactions: vector::empty<SubscriptionTransaction>()
@@ -110,16 +110,14 @@ module platform::subscription {
 
     // Accessor functions
 
-    public fun user_create_date<COIN>(self: &SubscriptionPlatform<COIN>, ctx: &mut TxContext): u64 {
+    public fun user_create_date<COIN>(self: &SubscriptionPlatform<COIN>, ctx: &mut TxContext) -> u64 {
         assert!(table::contains<address, UserAccount<COIN>>(&self.user_accounts, tx_context::sender(ctx)), ENoSubscription);
         let user_account = table::borrow<address, UserAccount<COIN>>(&self.user_accounts, tx_context::sender(ctx));
         user_account.create_date
     }
 
-    // Implement other accessor functions as needed...
-
     // Example accessor function for fetching user's subscription fee
-    public fun user_subscription_fee<COIN>(self: &SubscriptionPlatform<COIN>, ctx: &mut TxContext): u64 {
+    public fun user_subscription_fee<COIN>(self: &SubscriptionPlatform<COIN>, ctx: &mut TxContext) -> u64 {
         assert!(table::contains<address, UserAccount<COIN>>(&self.user_accounts, tx_context::sender(ctx)), ENoSubscription);
         let user_account = table::borrow<address, UserAccount<COIN>>(&self.user_accounts, tx_context::sender(ctx));
         coin::value(&user_account.subscription_fee)
@@ -145,6 +143,43 @@ module platform::subscription {
         user_account.subscription_fee = new_fee;
     }
 
+    // Transaction history retrieval
+public fun get_subscription_transactions<COIN>(
+    platform: &SubscriptionPlatform<COIN>,
+    ctx: &mut TxContext
+) -> vector<SubscriptionTransaction> {
+    assert!(table::contains<address, UserAccount<COIN>>(&platform.user_accounts, tx_context::sender(ctx)), ENoSubscription);
+    let user_account = table::borrow<address, UserAccount<COIN>>(&platform.user_accounts, tx_context::sender(ctx));
+    user_account.subscription_transactions.clone() // Return a clone to avoid borrowing issues
 }
 
+    // Subscription duration update
+    public fun update_subscription_duration<COIN>(
+        platform: &mut SubscriptionPlatform<COIN>,
+        new_duration: u64, // New duration in milliseconds
+        ctx: &mut TxContext
+    ) {
+        assert!(table::contains<address, UserAccount<COIN>>(&platform.user_accounts, tx_context::sender(ctx)), ENoSubscription);
+        let mut user_account = table::get_mut::<address, UserAccount<COIN>>(&mut platform.user_accounts, tx_context::sender(ctx)).unwrap();
+        let current_timestamp = clock::timestamp_ms(clock);
+        if new_duration >= current_timestamp {
+            user_account.subscription_valid_until = new_duration;
+        } else {
+            // Optionally handle error or extend subscription from the current time
+            // For simplicity, here we extend from the current time
+            user_account.subscription_valid_until = current_timestamp + new_duration;
+        }
+    }
 
+    // Platform address update
+    public fun update_platform_address<COIN>(
+        platform: &mut SubscriptionPlatform<COIN>,
+        new_address: address,
+        ctx: &mut TxContext
+    ) {
+        // Optionally, add authentication to ensure only the platform owner can update the address
+        platform.platform_address = new_address;
+    }
+
+
+}
